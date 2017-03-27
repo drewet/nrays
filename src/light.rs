@@ -1,23 +1,23 @@
-use std::rand;
-use na::Pnt3;
+use rand::random;
+use na::Point3;
 use math::{Scalar, Point, Vect};
 
 #[cfg(feature = "3d")]
-use na;
+use na::{self, BaseFloat};
 
 pub struct Light {
     pub pos:       Point,
     pub radius:    Scalar,
-    pub racsample: uint,
-    pub color:     Pnt3<f32>
+    pub racsample: usize,
+    pub color:     Point3<f32>
 }
 
 impl Light {
-    pub fn new(pos: Point, radius: Scalar, nsample: uint, color: Pnt3<f32>) -> Light {
+    pub fn new(pos: Point, radius: Scalar, nsample: usize, color: Point3<f32>) -> Light {
         Light {
             pos:     pos,
             radius:  radius,
-            racsample: ((nsample as f32).sqrt()) as uint,
+            racsample: ((nsample as f32).sqrt()) as usize,
             color:   color
         }
     }
@@ -25,15 +25,16 @@ impl Light {
 
 #[cfg(feature = "3d")]
 impl Light {
-    pub fn sample<T>(&self, f: |Point| -> T) {
-        for i in range(0u, self.racsample) {
-            for j in range(0u, self.racsample) {
-                let iracsample = na::one::<Scalar>() / na::cast(self.racsample);
-                let parttheta  = iracsample * Float::pi();
-                let partphi    = iracsample * Float::two_pi();
+    pub fn sample<T, F: FnMut(Point) -> T>(&self, f: &mut F) {
+        for i in 0usize .. self.racsample {
+            for j in 0usize .. self.racsample {
+                let iracsample: Scalar = 1.0 / (self.racsample as f64);
+                let pi: Scalar         = BaseFloat::pi();
+                let parttheta: Scalar  = iracsample * pi;
+                let partphi: Scalar    = iracsample * (pi + pi);
 
-                let phi   = (rand::random::<Scalar>() + na::cast(i)) * partphi;
-                let theta = (rand::random::<Scalar>() + na::cast(j)) * parttheta;
+                let phi: Scalar   = (random::<f64>() + i as f64) * partphi;
+                let theta: Scalar = (random::<f64>() + j as f64) * parttheta;
 
                 let mut v = na::zero::<Vect>();
 
@@ -54,9 +55,9 @@ impl Light {
 
 #[cfg(not(feature = "3d"))]
 impl Light {
-    pub fn sample<T>(&self, f: |Point| -> T) {
-        for _ in range(0u, self.racsample * self.racsample) {
-            f(self.pos + rand::random::<Vect>() * self.radius);
+    pub fn sample<T, F: FnMut(Point) -> T>(&self, f: &mut F) {
+        for _ in 0 .. self.racsample * self.racsample {
+            f(self.pos + random::<Vect>() * self.radius);
         }
     }
 }

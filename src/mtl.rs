@@ -1,21 +1,27 @@
 //! Simplistic mtl loader.
 
 use std::mem;
-use std::io::fs::File;
-use std::io::{IoResult, Reader};
-use std::str::Words;
-use std::from_str::FromStr;
-use na::Pnt3;
+use std::fs::File;
+use std::io::Result as IoResult;
+use std::io::Read;
+use std::str::FromStr;
+use std::path::Path;
+use na::Point3;
+use obj::Words;
+use obj;
 
-fn error(line: uint, err: &str) -> ! {
+fn error(line: usize, err: &str) -> ! {
     panic!("At line {}: {}", line, err)
 }
 
 /// Parses a mtl file.
 pub fn parse_file(path: &Path) -> IoResult<Vec<MtlMaterial>> {
     match File::open(path) {
-        Ok(mut file) => file.read_to_string().map(|mtl| parse(mtl.as_slice())),
-        Err(e)       => Err(e)
+        Ok(mut file) => {
+            let mut sfile = String::new();
+            file.read_to_string(&mut sfile).map(|_| parse(&sfile[..]))
+        },
+        Err(e) => Err(e)
     }
 }
 
@@ -24,15 +30,15 @@ pub fn parse(string: &str) -> Vec<MtlMaterial> {
     let mut res           = Vec::new();
     let mut curr_material = MtlMaterial::new_default("".to_string());
 
-    for (l, line) in string.lines_any().enumerate() {
-        let mut words = line.words();
+    for (l, line) in string.lines().enumerate() {
+        let mut words = obj::split_words(line);
         let tag       = words.next();
 
         match tag {
             None    => { },
             Some(w) => {
                 if w.len() != 0 && w.as_bytes()[0] != ('#' as u8) {
-                    let mut p = line.words().peekable();
+                    let mut p = obj::split_words(line).peekable();
                     let     _ = p.next();
 
                     if p.peek().is_none() {
@@ -67,7 +73,7 @@ pub fn parse(string: &str) -> Vec<MtlMaterial> {
                             // specular texture map
                             "map_d" | "map_opacity" => curr_material.opacity_map = Some(parse_name(l, words)),
                             _     => {
-                                println!("Warning: unknown line {} ignored: `{:s}'", l, line);
+                                println!("Warning: unknown line {} ignored: `{}'", l, line);
                             }
                     }
                 }
@@ -82,39 +88,39 @@ pub fn parse(string: &str) -> Vec<MtlMaterial> {
     res
 }
 
-fn parse_name<'a>(_: uint, mut ws: Words<'a>) -> String {
+fn parse_name<'a>(_: usize, ws: Words<'a>) -> String {
     let res: Vec<&'a str> = ws.collect();
-    res.connect(" ")
+    res.join(" ")
 }
 
-fn parse_color<'a>(l: uint, mut ws: Words<'a>) -> Pnt3<f32> {
+fn parse_color<'a>(l: usize, mut ws: Words<'a>) -> Point3<f32> {
     let sx = ws.next().unwrap_or_else(|| error(l, "3 components were expected, found 0."));
     let sy = ws.next().unwrap_or_else(|| error(l, "3 components were expected, found 1."));
     let sz = ws.next().unwrap_or_else(|| error(l, "3 components were expected, found 2."));
 
-    let x: Option<f32> = FromStr::from_str(sx);
-    let y: Option<f32> = FromStr::from_str(sy);
-    let z: Option<f32> = FromStr::from_str(sz);
+    let x: Result<f32, _> = FromStr::from_str(sx);
+    let y: Result<f32, _> = FromStr::from_str(sy);
+    let z: Result<f32, _> = FromStr::from_str(sz);
 
-    let x = x.unwrap_or_else(|| error(l, format!("failed to parse `{}' as a f32.", sx).as_slice()));
-    let y = y.unwrap_or_else(|| error(l, format!("failed to parse `{}' as a f32.", sy).as_slice()));
-    let z = z.unwrap_or_else(|| error(l, format!("failed to parse `{}' as a f32.", sz).as_slice()));
+    let x = x.unwrap_or_else(|e| error(l, &format!("failed to parse `{}' as a f32: {}", sx, e)[..]));
+    let y = y.unwrap_or_else(|e| error(l, &format!("failed to parse `{}' as a f32: {}", sy, e)[..]));
+    let z = z.unwrap_or_else(|e| error(l, &format!("failed to parse `{}' as a f32: {}", sz, e)[..]));
 
-    Pnt3::new(x, y, z)
+    Point3::new(x, y, z)
 }
 
-fn parse_scalar<'a>(l: uint, mut ws: Words<'a>) -> f32 {
+fn parse_scalar<'a>(l: usize, mut ws: Words<'a>) -> f32 {
     let sx = ws.next().unwrap_or_else(|| error(l, "1 component was expected, found 0."));
 
-    let x: Option<f32> = FromStr::from_str(sx);
+    let x: Result<f32, _> = FromStr::from_str(sx);
 
-    let x = x.unwrap_or_else(|| error(l, format!("failed to parse `{}' as a f32.", sx).as_slice()));
+    let x = x.unwrap_or_else(|e| error(l, &format!("failed to parse `{}' as a f32: {}", sx, e)[..]));
 
     x
 }
 
 /// Material informations read from a `.mtl` file.
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct MtlMaterial {
     /// Name of the material.
     pub name:             String,
@@ -127,11 +133,11 @@ pub struct MtlMaterial {
     /// Path to the opacity map.
     pub opacity_map:      Option<String>,
     /// The ambiant color.
-    pub ambiant:          Pnt3<f32>,
+    pub ambiant:          Point3<f32>,
     /// The diffuse color.
-    pub diffuse:          Pnt3<f32>,
+    pub diffuse:          Point3<f32>,
     /// The specular color.
-    pub specular:         Pnt3<f32>,
+    pub specular:         Point3<f32>,
     /// The shininess.
     pub shininess:        f32,
     /// Alpha blending.
@@ -149,9 +155,9 @@ impl MtlMaterial {
             diffuse_texture:  None,
             specular_texture: None,
             opacity_map:      None,
-            ambiant:          Pnt3::new(1.0, 1.0, 1.0),
-            diffuse:          Pnt3::new(1.0, 1.0, 1.0),
-            specular:         Pnt3::new(1.0, 1.0, 1.0),
+            ambiant:          Point3::new(1.0, 1.0, 1.0),
+            diffuse:          Point3::new(1.0, 1.0, 1.0),
+            specular:         Point3::new(1.0, 1.0, 1.0),
         }
     }
 
@@ -159,9 +165,9 @@ impl MtlMaterial {
     pub fn new(name:             String,
                shininess:        f32,
                alpha:            f32,
-               ambiant:          Pnt3<f32>,
-               diffuse:          Pnt3<f32>,
-               specular:         Pnt3<f32>,
+               ambiant:          Point3<f32>,
+               diffuse:          Point3<f32>,
+               specular:         Point3<f32>,
                ambiant_texture:  Option<String>,
                diffuse_texture:  Option<String>,
                specular_texture: Option<String>,

@@ -4,17 +4,19 @@ version = "0.1.0"
 authors = [ "Sébastien Crozet <developer@crozet.re>" ]
 
 [features]
-default = [ "3d", "f64" ]
+default = [ "f64" ]
 f64     = []
-3d      = []
 
 [lib]
 name = "nrays3d"
-path = "../../src/lib3d.rs"
+path = "../../src/lib.rs"
 
-
-[dependencies.ncollide]
-git = "https://github.com/sebcrozet/ncollide"
+[dependencies]
+nalgebra = "*"
+ncollide = "*"
+rand = "*"
+num = "*"
+num_cpus = "*"
 
 [dependencies.png]
 git = "https://github.com/servo/rust-png"
